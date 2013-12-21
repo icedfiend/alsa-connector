@@ -1,0 +1,14 @@
+{
+  "name": "alsa-connector",
+  "version": "0.0.1",
+  "description": "Connect new sound cards as you plug them with alsa_in command",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Alejandro Penedo <icedfiend@gmail.com>",
+  "license": "BSD-2-Clause",
+  "dependencies": {
+  	"commander": "x"
+  }
+}

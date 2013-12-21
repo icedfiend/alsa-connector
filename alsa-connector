@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+
+var fs = require("fs"),
+	spawn = require('child_process').spawn,
+	configurator = require("./lib/configurator"),
+	config = configurator.config(),
+	args = configurator.arguments(),
+	parseContent = configurator.parsers().parseContent,
+	pattern = "\\d \\[(\\w*)\\s*\\]: .*",
+	spawns = {},
+	content = "";
+
+if(args.run) {
+	process.on("SIGINT",cleanupAndExit);
+	process.on("SIGTERM",cleanupAndExit);
+	run();
+}
+
+function run() {
+	if (fs.existsSync(config.file)) {
+		checkFileLoop();
+		setInterval(checkFileLoop, config.interval);
+	} else {
+		console.log("File", config.file, "not found.");
+		process.exit(0);
+	}
+}
+
+function checkFileLoop(){
+	var newContent = fs.readFileSync(config.file, {encoding:"utf8"});
+	if(newContent != content) {
+		parseContent(newContent, executeCommand);
+	}
+	content = newContent;
+}
+
+function executeCommand(adapters) {
+	removeUnusedAdapters(adapters);
+	addNewAdapters(adapters);
+}
+
+function removeUnusedAdapters(adapters) {
+	for(var child in spawns) {
+		if(adapters.indexOf(child) < 0) {
+			removeAdapter(child);
+		}
+	}
+}
+
+function removeAdapter(adapter) {
+	if(spawns[adapter]){
+		spawns[adapter].kill("SIGKILL");
+		delete spawns[adapter];
+	}
+}
+
+function addNewAdapters(adapters) {
+	for(var index in adapters) {
+		var adapter = adapters[index];
+
+		spawnAlsaConnection(adapter);
+	}
+}
+
+function spawnAlsaConnection(adapter) {
+	if(spawns[adapter]){
+		return;
+	}
+
+	var command = config.command;
+	var args = replaceArgumentsPlaceholders(config.args, adapter);
+	
+	spawns[adapter] = spawn(command, args.split(" "));
+	spawns[adapter].on("error", onErrorFunc);
+	spawns[adapter].on("exit", function() {
+		removeAdapter(adapter);
+	});
+}
+
+function replaceArgumentsPlaceholders(args, adapter){
+	return args.replace("##adapter##", adapter).replace("##alias##", config.alias[adapter] || adapter);
+}
+
+function onErrorFunc(err, signal){
+	console.log(">>>>>>>>> ERROR: ", err, signal);
+}
+
+function cleanupAndExit() {
+	removeAllAdapters();
+	process.exit(0);
+}
+
+function removeAllAdapters(){
+	for(var child in spawns) {
+		removeAdapter(child);
+	}
+}
