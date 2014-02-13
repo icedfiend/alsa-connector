@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
 var fs = require("fs"),
-	spawn = require('child_process').spawn,
+	extend = require("extend"),
+	spawn = require("./lib/spawn").spawn,
 	configurator = require("./lib/configurator"),
 	config = configurator.config(),
 	args = configurator.arguments(),
+	checker = require('./lib/file-checker')(config.file, config.interval, checkFileLoop),
 	parseContent = configurator.parsers().parseContent,
 	pattern = "\\d \\[(\\w*)\\s*\\]: .*",
 	spawns = {},
@@ -17,11 +19,10 @@ if(args.run) {
 }
 
 function run() {
-	if (fs.existsSync(config.file)) {
-		checkFileLoop();
-		setInterval(checkFileLoop, config.interval);
-	} else {
-		console.log("File", config.file, "not found.");
+	try {
+		checker.start();
+	} catch(e){
+		console.log(e);
 		process.exit(0);
 	}
 }
@@ -36,7 +37,7 @@ function checkFileLoop(){
 
 function executeCommand(adapters) {
 	removeUnusedAdapters(adapters);
-	addNewAdapters(adapters);
+	connectNewAdapters(adapters);
 }
 
 function removeUnusedAdapters(adapters) {
@@ -54,7 +55,7 @@ function removeAdapter(adapter) {
 	}
 }
 
-function addNewAdapters(adapters) {
+function connectNewAdapters(adapters) {
 	for(var index in adapters) {
 		var adapter = adapters[index];
 
@@ -66,19 +67,23 @@ function spawnAlsaConnection(adapter) {
 	if(spawns[adapter]){
 		return;
 	}
-
-	var command = config.command;
-	var args = replaceArgumentsPlaceholders(config.args, adapter);
 	
-	spawns[adapter] = spawn(command, args.split(" "));
-	spawns[adapter].on("error", onErrorFunc);
-	spawns[adapter].on("exit", function() {
-		removeAdapter(adapter);
-	});
+	spawns[adapter] = spawn(config.command, replaceArgumentsPlaceholders(config.args, adapter))
+		.on("error", function(err, signal) {
+			onErrorFunc(err, signal);
+			removeAdapter(adapter);
+		})
+		.on("exit", function() {
+			removeAdapter(adapter);
+		})
+		.run();
 }
 
 function replaceArgumentsPlaceholders(args, adapter){
-	return args.replace("##adapter##", adapter).replace("##alias##", config.alias[adapter] || adapter);
+	var a = extend({}, args);
+	a["-j"] = a["-j"].replace("##alias##", config.alias[adapter] || adapter);
+	a["-d"] = a["-d"].replace("##adapter##", adapter);
+	return a;
 }
 
 function onErrorFunc(err, signal){

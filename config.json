@@ -1,1 +1,1 @@
-{"ignore":["PCH","Loopback"],"alias":{"CODEC":"Zoom-G2.1U","Device":"LP-Ultra3","Adapter":"RS-Cable"},"interval":"1000","command":"alsa_in","args":"-j ##alias## -d hw:##adapter## -q 4","file":"/proc/asound/cards","pattern":"\\d \\[(\\w*)\\s*\\]: .*"}
+{"ignore":["PCH","Loopback"],"alias":{"CODEC":"Zoom-G2.1U","Device":"LP-Ultra3","Adapter":"RS-Cable"},"interval":"1000","command":"alsa_in","args":{"-j":"##alias##","-d":"hw:##adapter##","-q":"4"},"file":"/proc/asound/cards","pattern":"\\d \\[(\\w*)\\s*\\]: .*"}
