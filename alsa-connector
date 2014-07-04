@@ -10,26 +10,30 @@ var fs = require("fs"),
 	parseContent = configurator.parsers().parseContent,
 	pattern = "\\d \\[(\\w*)\\s*\\]: .*",
 	spawns = {},
-	content = "";
+	content = "",
+	inputProcess = !args.onlyOutput,
+	outputProcess = !args.onlyInput;
 
-if(args.run) {
-	process.on("SIGINT",cleanupAndExit);
-	process.on("SIGTERM",cleanupAndExit);
+if (args.run) {
+	process.on("SIGINT", cleanupAndExit);
+	process.on("SIGTERM", cleanupAndExit);
 	run();
 }
 
 function run() {
 	try {
 		checker.start();
-	} catch(e){
+	} catch (e) {
 		console.log(e);
 		process.exit(0);
 	}
 }
 
-function checkFileLoop(){
-	var newContent = fs.readFileSync(config.file, {encoding:"utf8"});
-	if(newContent != content) {
+function checkFileLoop() {
+	var newContent = fs.readFileSync(config.file, {
+		encoding: "utf8"
+	});
+	if (newContent != content) {
 		parseContent(newContent, executeCommand);
 	}
 	content = newContent;
@@ -41,52 +45,75 @@ function executeCommand(adapters) {
 }
 
 function removeUnusedAdapters(adapters) {
-	for(var child in spawns) {
-		if(adapters.indexOf(child) < 0) {
-			removeAdapter(child);
+	for (var child in spawns) {
+		if (adapters.indexOf(child) < 0) {
+			removeAdapter(child, "in");
+			removeAdapter(child, "out");
 		}
 	}
 }
 
-function removeAdapter(adapter) {
-	if(spawns[adapter]){
-		spawns[adapter].kill("SIGKILL");
-		delete spawns[adapter];
+function removeAdapter(adapter, type) {
+	if (spawns[adapter] && spawns[adapter][type]) {
+		var alias = config.alias[adapter];
+		console.log("Disconnecting", alias || adapter, type);
+		spawns[adapter][type].kill("SIGKILL");
+		delete spawns[adapter][type];
+
+		if (!spawns[adapter]. in && !spawns[adapter].out) {
+			delete spawns[adapter];
+		}
 	}
 }
 
 function connectNewAdapters(adapters) {
-	for(var index in adapters) {
+	for (var index in adapters) {
 		var adapter = adapters[index];
+		var alias = config.alias[adapter];
+		console.log("Connecting", alias || adapter);
 
 		spawnAlsaConnection(adapter);
 	}
 }
 
 function spawnAlsaConnection(adapter) {
-	if(spawns[adapter]){
+	if (spawns[adapter]) {
 		return;
 	}
-	
-	spawns[adapter] = spawn(config.command, replaceArgumentsPlaceholders(config.args, adapter))
-		.on("error", function(err, signal) {
-			onErrorFunc(err, signal);
-			removeAdapter(adapter);
-		})
-		.on("exit", function() {
-			removeAdapter(adapter);
-		})
-		.run();
+
+	spawns[adapter] = spawns[adapter] || {};
+	if (inputProcess) {
+		spawns[adapter]. in = spawn(config.command_in, replaceArgumentsPlaceholders(config.args, adapter, '_in'))
+			.on("error", function (err, signal) {
+				onErrorFunc(err, signal);
+			})
+			.on("exit", function () {
+				removeAdapter(adapter, "in");
+			})
+			.run();
+	}
+
+	if (outputProcess) {
+		spawns[adapter].out = spawn(config.command_out, replaceArgumentsPlaceholders(config.args, adapter, '_out'))
+			.on("error", function (err, signal) {
+				onErrorFunc(err, signal);
+			})
+			.on("exit", function () {
+				removeAdapter(adapter, "out");
+			})
+			.run();
+	}
 }
 
-function replaceArgumentsPlaceholders(args, adapter){
+function replaceArgumentsPlaceholders(args, adapter, sufix) {
 	var a = extend({}, args);
-	a["-j"] = a["-j"].replace("##alias##", config.alias[adapter] || adapter);
+	sufix = sufix || "";
+	a["-j"] = a["-j"].replace("##alias##", (config.alias[adapter] || adapter) + sufix);
 	a["-d"] = a["-d"].replace("##adapter##", adapter);
 	return a;
 }
 
-function onErrorFunc(err, signal){
+function onErrorFunc(err, signal) {
 	console.log(">>>>>>>>> ERROR: ", err, signal);
 }
 
@@ -95,8 +122,9 @@ function cleanupAndExit() {
 	process.exit(0);
 }
 
-function removeAllAdapters(){
-	for(var child in spawns) {
-		removeAdapter(child);
+function removeAllAdapters() {
+	for (var child in spawns) {
+		removeAdapter(child, "in");
+		removeAdapter(child, "out");
 	}
 }
